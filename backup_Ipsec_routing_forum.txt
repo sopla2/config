@@ -1,0 +1,155 @@
+
+/interface bridge
+add name=bridge1
+/interface l2tp-client
+add add-default-route=yes allow=chap,mschap2 connect-to=37.247.232.xx \
+    ipsec-secret="xxxxxx" name=\
+    "l2tp-Centrala " password="xxxx" use-ipsec=yes user=\
+    dabrowka_l2tp
+/interface lte
+set [ find ] allow-roaming=no name=lte1
+/interface list
+add comment=defconf name=WAN
+add comment=defconf name=LAN
+/interface lte apn
+set [ find default=yes ] apn=m2m.plusgsm.pl
+/interface wireless security-profiles
+set [ find default=yes ] supplicant-identity=MikroTik
+/ip ipsec profile
+add dh-group=modp1024 dpd-interval=5s enc-algorithm=des name=profile1 \
+    nat-traversal=no
+/ip ipsec peer
+add address=37.247.232.xx/32 comment="tunel ipsec FGT " name=peer-tunnelFGT \
+    profile=profile1
+/ip ipsec proposal
+set [ find default=yes ] enc-algorithms=aes-192-cbc pfs-group=none
+add enc-algorithms=des name=proposal1 pfs-group=none
+/ip pool
+add name=default-dhcp ranges=192.168.88.10-192.168.88.254
+add name=dhcp ranges=192.168.96.2-192.168.99.254
+add name=dhcp_pool2 ranges=192.168.96.2-192.168.99.254
+/ip dhcp-server
+add address-pool=dhcp_pool2 disabled=no interface=bridge1 name=dhcp1
+/interface sstp-client
+add add-default-route=yes connect-to=212.244.63.180:1443 name=\
+    sstp-out-dabrowkaLTE password=xxxx profile=\
+    default-encryption user=mt-dabrowkaLTE
+/routing ospf area
+set [ find default=yes ] disabled=yes
+/snmp community
+add addresses=::/0 name=xxxx
+/interface bridge port
+add bridge=bridge1 interface=all
+/ip neighbor discovery-settings
+set discover-interface-list=LAN
+/interface list member
+add comment=defconf interface=ether1 list=LAN
+add comment=defconf interface=lte1 list=WAN
+add comment=defconf interface=bridge1 list=LAN
+add list=LAN
+/ip address
+add address=192.168.96.1/22 comment=defconf interface=ether1 network=\
+    192.168.96.0
+/ip dhcp-server network
+add address=192.168.96.0/22 dns-server=192.168.1.8,212.2.96.53 gateway=\
+    192.168.96.1 netmask=22
+/ip dns
+set allow-remote-requests=yes servers=192.168.1.8
+/ip dns static
+add address=192.168.88.1 comment=defconf name=router.lan
+add address=192.168.96.1 comment=defconf name=router.lan
+/ip firewall filter
+add action=accept chain=input comment=\
+    "defconf: accept established,related,untracked" connection-state=\
+    established,related,untracked log=yes
+add action=accept chain=output log=yes
+add action=accept chain=forward dst-address=192.168.0.0/16 log=yes \
+    src-address=192.168.96.0/22
+add action=accept chain=forward dst-address=10.200.0.0/16 src-address=\
+    192.168.96.0/22
+add action=drop chain=input comment="defconf: drop invalid" connection-state=\
+    invalid
+add action=accept chain=input comment="defconf: accept ICMP" protocol=icmp
+add action=accept chain=input comment=\
+    "defconf: accept to local loopback (for CAPsMAN)" dst-address=127.0.0.1
+add action=drop chain=input comment="defconf: drop all not coming from LAN" \
+    in-interface-list=!LAN
+add action=accept chain=forward comment="defconf: accept in ipsec policy" \
+    ipsec-policy=in,ipsec
+add action=accept chain=forward comment="defconf: accept out ipsec policy" \
+    ipsec-policy=out,ipsec
+add action=fasttrack-connection chain=forward comment="defconf: fasttrack" \
+    connection-state=established,related
+add action=accept chain=forward comment=\
+    "defconf: accept established,related, untracked" connection-state=\
+    established,related,untracked
+add action=drop chain=forward comment="defconf: drop invalid" \
+    connection-state=invalid
+add action=drop chain=forward comment=\
+    "defconf: drop all from WAN not DSTNATed" connection-nat-state=!dstnat \
+    connection-state=new in-interface-list=WAN
+add action=accept chain=input connection-state=established
+add action=accept chain=input protocol=icmp
+add action=accept chain=forward comment=\
+    "defconf: accept established,related, untracked" connection-state=\
+    established,related,untracked
+add action=accept chain=forward comment="defconf: accept in ipsec policy" \
+    ipsec-policy=in,ipsec
+add action=accept chain=forward comment="defconf: accept out ipsec policy" \
+    ipsec-policy=out,ipsec
+add action=fasttrack-connection chain=forward comment="defconf: fasttrack" \
+    connection-state=established,related disabled=yes
+add action=drop chain=forward comment="defconf: drop invalid" \
+    connection-state=invalid disabled=yes
+add action=drop chain=forward comment=\
+    "defconf: drop all from WAN not DSTNATed" connection-nat-state=!dstnat \
+    connection-state=new disabled=yes in-interface-list=WAN
+add action=accept chain=input connection-state=related
+add action=drop chain=input in-interface-list=!LAN
+/ip firewall mangle
+add action=mark-routing chain=prerouting new-routing-mark=main passthrough=\
+    yes
+/ip firewall nat
+add action=accept chain=srcnat dst-address=192.168.0.0/21 src-address=\
+    192.168.96.0/22
+add action=accept chain=srcnat dst-address=10.200.0.0/16 src-address=\
+    192.168.96.0/22
+add action=accept chain=srcnat
+add action=accept chain=srcnat
+add action=masquerade chain=srcnat comment="defconf: masquerade" \
+    ipsec-policy=out,none log=yes out-interface-list=WAN
+add action=accept chain=srcnat log=yes
+add action=masquerade chain=srcnat log=yes out-interface=lte1 \
+    src-address-list=192.168.96.0/22
+add action=accept chain=srcnat disabled=yes ipsec-policy=out,ipsec
+add action=masquerade chain=srcnat comment="defconf: masquerade" \
+    out-interface-list=WAN
+/ip firewall service-port
+set sip disabled=yes
+/ip ipsec identity
+add comment="Tunel ipsec FGT" mode-config=request-only peer=peer-tunnelFGT \
+    secret="KNj0R\$xxxxxxx"
+/ip ipsec policy
+add comment="tunel ipsec FGT" dst-address=0.0.0.0/0 peer=peer-tunnelFGT \
+    proposal=proposal1 src-address=192.168.96.0/22 tunnel=yes
+add dst-address=192.168.0.0/21 peer=peer-tunnelFGT proposal=proposal1 \
+    src-address=192.168.96.0/22 tunnel=yes
+/ip upnp interfaces
+add interface=ether1 type=internal
+add interface=lte1 type=external
+/routing ospf network
+add area=backbone network=192.168.96.0/22
+/snmp
+set enabled=yes trap-community=xxxx
+/system clock
+set time-zone-name=Europe/Warsaw
+/system identity
+set name=mt-dabrowkaLTE
+/system leds
+add interface=lte1 leds=lte-led type=interface-activity
+/system logging
+set 0 topics=interface
+/tool mac-server
+set allowed-interface-list=LAN
+/tool mac-server mac-winbox
+set allowed-interface-list=LAN
